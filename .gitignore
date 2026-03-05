@@ -22,13 +22,8 @@ env/
 dist/
 build/
 
-# ----- Node.js -----
+# ----- Node.js / Bun -----
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-.pnpm-store/
 
 # ----- Moonrepo -----
 .moon/cache
@@ -62,5 +57,4 @@ htmlcov/
 .next/
 
 # ----- Logs (scoped, not blanket *.log) -----
-npm-debug.log*
 debug.log

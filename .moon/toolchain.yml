@@ -1,13 +1,14 @@
 # https://moonrepo.dev/docs/config/toolchain
 $schema: './cache/schemas/toolchain.json'
 
-# Node.js toolchain — for the Phase 4 React+Vite dashboard
-node:
-  version: '22.0.0'
-  packageManager: 'pnpm'
+# Bun toolchain — for the Phase 4 React+Vite dashboard
+# Chosen over pnpm for: 28× faster installs, built-in TS execution,
+# cutting-edge signal. See docs/adr/002-bun-over-pnpm.md
+# Requires javascript toolchain to be enabled (moon v1.40+ WASM toolchain)
+javascript: {}
 
-pnpm:
-  version: '9.15.0'
+bun:
+  version: '1.3.10'
 
 # Python toolchain — WIP in Moon v2, configured per-project via moon.yml
 # Python version management handled by uv (see pyproject.toml files)
