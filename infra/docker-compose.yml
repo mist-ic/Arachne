@@ -19,6 +19,7 @@ volumes:
   pg_temporal_data:
   minio_data:
 
+
 services:
 
   # ===========================================================================
@@ -42,15 +43,15 @@ services:
       - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
       - --advertise-schema-registry-addr internal://redpanda:8081,external://localhost:18081
     ports:
-      - "19092:19092"   # Kafka API (external)
-      - "18081:18081"   # Schema Registry (external)
-      - "18082:18082"   # Pandaproxy / REST (external)
+      - "19092:19092" # Kafka API (external)
+      - "18081:18081" # Schema Registry (external)
+      - "18082:18082" # Pandaproxy / REST (external)
     volumes:
       - redpanda_data:/var/lib/redpanda/data
     networks:
       - arachne-net
     healthcheck:
-      test: ["CMD", "rpk", "cluster", "health", "--api-urls", "internal://localhost:9644"]
+      test: [ "CMD", "rpk", "cluster", "health", "--api-urls", "internal://localhost:9644" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -94,7 +95,7 @@ services:
     networks:
       - arachne-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U arachne -d arachne"]
+      test: [ "CMD-SHELL", "pg_isready -U arachne -d arachne" ]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -119,7 +120,7 @@ services:
     networks:
       - arachne-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
+      test: [ "CMD-SHELL", "pg_isready -U temporal -d temporal" ]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -135,8 +136,8 @@ services:
     container_name: arachne-minio
     command: server /data --console-address ":9001"
     ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # MinIO Console
+      - "9000:9000" # S3 API
+      - "9001:9001" # MinIO Console
     environment:
       MINIO_ROOT_USER: arachne
       MINIO_ROOT_PASSWORD: arachne123
@@ -145,7 +146,7 @@ services:
     networks:
       - arachne-net
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: [ "CMD", "mc", "ready", "local" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -161,15 +162,7 @@ services:
       minio:
         condition: service_healthy
     entrypoint: >
-      /bin/sh -c "
-      mc alias set arachne http://minio:9000 arachne arachne123 &&
-      mc mb --ignore-existing arachne/arachne-raw-html &&
-      mc mb --ignore-existing arachne/arachne-screenshots &&
-      mc mb --ignore-existing arachne/arachne-results &&
-      mc mb --ignore-existing arachne/arachne-artifacts &&
-      echo 'Buckets created successfully' &&
-      exit 0
-      "
+      /bin/sh -c " mc alias set arachne http://minio:9000 arachne arachne123 && mc mb --ignore-existing arachne/arachne-raw-html && mc mb --ignore-existing arachne/arachne-screenshots && mc mb --ignore-existing arachne/arachne-results && mc mb --ignore-existing arachne/arachne-artifacts && echo 'Buckets created successfully' && exit 0 "
     networks:
       - arachne-net
 
@@ -209,5 +202,73 @@ services:
       TEMPORAL_CORS_ORIGINS: "http://localhost:8088"
     depends_on:
       - temporal
+    networks:
+      - arachne-net
+
+  # ===========================================================================
+  # Arachne API Gateway — FastAPI REST API
+  # ===========================================================================
+  # The single entry point for all client requests.
+  # Submits jobs, starts Temporal workflows, serves status updates.
+  api-gateway:
+    build:
+      context: ..
+      dockerfile: apps/api-gateway/Dockerfile
+    container_name: arachne-api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      ARACHNE_TEMPORAL_ADDRESS: "temporal:7233"
+      ARACHNE_POSTGRES_DSN: "postgresql+asyncpg://arachne:arachne@postgres:5432/arachne"
+      ARACHNE_REDPANDA_BROKERS: "redpanda:9092"
+      ARACHNE_MINIO_ENDPOINT: "minio:9000"
+      ARACHNE_MINIO_ACCESS_KEY: "arachne"
+      ARACHNE_MINIO_SECRET_KEY: "arachne123"
+      ARACHNE_LOG_LEVEL: "INFO"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+      redpanda:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - arachne-net
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ===========================================================================
+  # Arachne HTTP Worker — Temporal Activity Worker
+  # ===========================================================================
+  # Listens on the "scrape-http" task queue and executes ScrapeWorkflow.
+  # Scale horizontally by increasing replicas.
+  worker-http:
+    build:
+      context: ..
+      dockerfile: apps/worker-http/Dockerfile
+    container_name: arachne-worker-http
+    environment:
+      ARACHNE_TEMPORAL_ADDRESS: "temporal:7233"
+      ARACHNE_POSTGRES_DSN: "postgresql+asyncpg://arachne:arachne@postgres:5432/arachne"
+      ARACHNE_REDPANDA_BROKERS: "redpanda:9092"
+      ARACHNE_MINIO_ENDPOINT: "minio:9000"
+      ARACHNE_MINIO_ACCESS_KEY: "arachne"
+      ARACHNE_MINIO_SECRET_KEY: "arachne123"
+      ARACHNE_LOG_LEVEL: "INFO"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+      redpanda:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     networks:
       - arachne-net
