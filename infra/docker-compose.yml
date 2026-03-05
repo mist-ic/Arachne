@@ -41,7 +41,6 @@ services:
       - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
       - --advertise-pandaproxy-addr internal://redpanda:8082,external://localhost:18082
       - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
-      - --advertise-schema-registry-addr internal://redpanda:8081,external://localhost:18081
     ports:
       - "19092:19092" # Kafka API (external)
       - "18081:18081" # Schema Registry (external)
@@ -51,7 +50,7 @@ services:
     networks:
       - arachne-net
     healthcheck:
-      test: [ "CMD", "rpk", "cluster", "health", "--api-urls", "internal://localhost:9644" ]
+      test: [ "CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true' || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -177,12 +176,11 @@ services:
     ports:
       - "7233:7233"
     environment:
-      - DB=postgresql
+      - DB=postgres12
       - DB_PORT=5432
       - POSTGRES_USER=temporal
       - POSTGRES_PWD=temporal
       - POSTGRES_SEEDS=postgres-temporal
-      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
     depends_on:
       postgres-temporal:
         condition: service_healthy

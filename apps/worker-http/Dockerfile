@@ -45,5 +45,6 @@ COPY packages/storage/src/ ./packages/storage/src/
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONPATH=/app/src
 
-CMD ["python", "-m", "src.main"]
+CMD ["python", "-c", "from main import main; import asyncio; asyncio.run(main())"]
