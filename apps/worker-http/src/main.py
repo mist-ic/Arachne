@@ -21,6 +21,7 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 
 from activities import (
+    extract_with_selectors,
     fetch_url,
     publish_crawl_result,
     record_crawl_attempt,
@@ -72,6 +73,7 @@ async def main() -> None:
             publish_crawl_result,
             update_job_status,
             record_crawl_attempt,
+            extract_with_selectors,
         ],
         max_concurrent_activities=config.max_concurrent_activities,
     )

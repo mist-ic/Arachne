@@ -30,8 +30,10 @@ from temporalio.common import RetryPolicy
 # to avoid sandbox restrictions
 with workflow.unsafe.imports_passed_through():
     from activities import (
+        ExtractionActivityResult,
         FetchResult,
         StoreResult,
+        extract_with_selectors,
         fetch_url,
         publish_crawl_result,
         store_raw_html,
@@ -144,15 +146,24 @@ class ScrapeWorkflow:
                 retry_policy=RetryPolicy(maximum_attempts=3),
             )
 
-            # --- Step 5: Basic extraction (if schema provided) ---
-            # Phase 1: CSS/XPath extraction via Step 9
-            # Phase 3: LLM-based extraction replaces this
+            # --- Step 5: Extract data (if schema provided) ---
             result_ref = None
             if params.extraction_schema:
-                # extract_with_selectors activity is added in Step 9
+                extraction_result: ExtractionActivityResult = await workflow.execute_activity(
+                    extract_with_selectors,
+                    args=[
+                        params.job_id,
+                        store_result.raw_html_ref,
+                        params.extraction_schema,
+                        params.url,
+                    ],
+                    start_to_close_timeout=timedelta(seconds=30),
+                    retry_policy=RetryPolicy(maximum_attempts=2),
+                )
+                result_ref = extraction_result.result_ref
                 workflow.logger.info(
-                    f"Extraction schema provided for job {params.job_id} "
-                    f"— will be processed after Step 9 implementation"
+                    f"Extracted {extraction_result.field_count} fields "
+                    f"in {extraction_result.elapsed_ms}ms for job {params.job_id}"
                 )
 
             # --- Step 6: Mark job as completed ---

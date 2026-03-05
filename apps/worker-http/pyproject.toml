@@ -8,6 +8,8 @@ dependencies = [
     "httpx>=0.28,<1",
     "pydantic-settings>=2.7,<3",
     "structlog>=24.4,<25",
+    "lxml>=5.3,<6",
+    "cssselect>=1.2,<2",
     "arachne-models",
     "arachne-messaging",
     "arachne-storage",

@@ -335,3 +335,91 @@ async def record_crawl_attempt(
         + (f"status={status_code}" if status_code else f"error={error}")
     )
 
+
+@dataclass
+class ExtractionActivityResult:
+    """Output of the extract_with_selectors activity."""
+    result_ref: str  # MinIO reference to extracted JSON
+    field_count: int
+    elapsed_ms: int
+
+
+@activity.defn
+async def extract_with_selectors(
+    job_id: str,
+    raw_html_ref: str,
+    extraction_schema: dict,
+    url: str,
+) -> ExtractionActivityResult:
+    """Extract structured data from raw HTML using CSS/XPath selectors.
+
+    Pulls raw HTML from MinIO (Claim-Check), runs extraction using
+    the schema, stores results in both MinIO and PostgreSQL.
+
+    Args:
+        job_id: UUID string of the job.
+        raw_html_ref: MinIO reference to raw HTML.
+        extraction_schema: Extraction schema dict from the job.
+        url: Source URL (for resolving relative URLs).
+
+    Returns:
+        ExtractionActivityResult with result reference and metadata.
+    """
+    import uuid
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    from arachne_models.extraction import ExtractionSchema
+    from arachne_models.db.repositories import EntityRepository
+    from arachne_storage import ArachneStorage
+    from config import WorkerConfig
+    from extraction_engine import extract
+
+    # 1. Retrieve raw HTML from MinIO
+    storage = ArachneStorage()
+    html_content = storage.retrieve_text(raw_html_ref)
+
+    activity.logger.info(f"Retrieved {len(html_content)} chars of HTML for job {job_id}")
+
+    # 2. Parse schema and run extraction
+    schema = ExtractionSchema.model_validate(extraction_schema)
+    result = extract(
+        html_content=html_content,
+        url=url,
+        job_id=job_id,
+        schema=schema,
+    )
+
+    activity.logger.info(
+        f"Extracted {len(result.extracted_data)} fields for job {job_id} "
+        f"in {result.elapsed_ms}ms"
+    )
+
+    # 3. Store extracted data in MinIO
+    result_ref = storage.store_result(job_id, result.extracted_data)
+
+    # 4. Store in PostgreSQL as an entity
+    config = WorkerConfig()
+    engine = create_async_engine(config.postgres_dsn)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with session_factory() as session:
+        repo = EntityRepository(session)
+        await repo.create(
+            job_id=uuid.UUID(job_id),
+            entity_type="extraction",
+            data=result.extracted_data,
+            source_url=url,
+            raw_html_ref=raw_html_ref,
+            schema_hash=result.schema_hash,
+        )
+        await session.commit()
+
+    await engine.dispose()
+
+    return ExtractionActivityResult(
+        result_ref=result_ref,
+        field_count=len(result.extracted_data),
+        elapsed_ms=result.elapsed_ms,
+    )
+
+
