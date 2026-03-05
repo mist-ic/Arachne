@@ -1,0 +1,213 @@
+# =============================================================================
+# Arachne — Docker Compose Stack
+# =============================================================================
+# One command to rule them all: docker compose -f infra/docker-compose.yml up -d
+#
+# Phase 1 services:
+#   Infrastructure: Redpanda, PostgreSQL, MinIO, Temporal
+#   Web UIs:        Redpanda Console, MinIO Console, Temporal UI
+#   Applications:   api-gateway, worker-http (added in Step 11)
+# =============================================================================
+
+networks:
+  arachne-net:
+    driver: bridge
+
+volumes:
+  redpanda_data:
+  pg_data:
+  pg_temporal_data:
+  minio_data:
+
+services:
+
+  # ===========================================================================
+  # Redpanda — Message Broker (Kafka API, no JVM)
+  # ===========================================================================
+  # Why Redpanda over Kafka: single binary, no ZooKeeper, no JVM,
+  # sub-ms tail latencies, 100% Kafka API compatible.
+  # See docs/adr/003-redpanda-over-kafka.md
+  redpanda:
+    image: redpandadata/redpanda:latest
+    container_name: arachne-redpanda
+    command:
+      - redpanda start
+      - --smp 1
+      - --memory 512M
+      - --overprovisioned
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr internal://redpanda:8082,external://localhost:18082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --advertise-schema-registry-addr internal://redpanda:8081,external://localhost:18081
+    ports:
+      - "19092:19092"   # Kafka API (external)
+      - "18081:18081"   # Schema Registry (external)
+      - "18082:18082"   # Pandaproxy / REST (external)
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    networks:
+      - arachne-net
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health", "--api-urls", "internal://localhost:9644"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # Redpanda Console — Web UI for topics, messages, consumer groups
+  # ---------------------------------------------------------------------------
+  redpanda-console:
+    image: redpandadata/console:latest
+    container_name: arachne-redpanda-console
+    ports:
+      - "8080:8080"
+    environment:
+      CONFIG_FILEPATH: ""
+      KAFKA_BROKERS: "redpanda:9092"
+      KAFKA_SCHEMAREGISTRY_ENABLED: "true"
+      KAFKA_SCHEMAREGISTRY_URLS: "http://redpanda:8081"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    networks:
+      - arachne-net
+
+  # ===========================================================================
+  # PostgreSQL — Relational Store (Arachne data)
+  # ===========================================================================
+  # Single PG instance for Arachne application data.
+  # Temporal gets its own PG instance to keep schemas isolated.
+  postgres:
+    image: postgres:16-alpine
+    container_name: arachne-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: arachne
+      POSTGRES_PASSWORD: arachne
+      POSTGRES_DB: arachne
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - arachne-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arachne -d arachne"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # ===========================================================================
+  # PostgreSQL — Temporal Backend
+  # ===========================================================================
+  # Separate PG instance for Temporal's internal state.
+  # Keeps Temporal schema migrations isolated from Arachne data.
+  postgres-temporal:
+    image: postgres:16-alpine
+    container_name: arachne-postgres-temporal
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    volumes:
+      - pg_temporal_data:/var/lib/postgresql/data
+    networks:
+      - arachne-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # ===========================================================================
+  # MinIO — S3-compatible Object Storage
+  # ===========================================================================
+  # Stores raw HTML, screenshots, extracted data, HAR files.
+  # Implements the Claim-Check pattern: large objects here, references in messages.
+  minio:
+    image: minio/minio:latest
+    container_name: arachne-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # MinIO Console
+    environment:
+      MINIO_ROOT_USER: arachne
+      MINIO_ROOT_PASSWORD: arachne123
+    volumes:
+      - minio_data:/data
+    networks:
+      - arachne-net
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # MinIO Init — Auto-create buckets on first startup
+  # ---------------------------------------------------------------------------
+  minio-init:
+    image: minio/mc:latest
+    container_name: arachne-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set arachne http://minio:9000 arachne arachne123 &&
+      mc mb --ignore-existing arachne/arachne-raw-html &&
+      mc mb --ignore-existing arachne/arachne-screenshots &&
+      mc mb --ignore-existing arachne/arachne-results &&
+      mc mb --ignore-existing arachne/arachne-artifacts &&
+      echo 'Buckets created successfully' &&
+      exit 0
+      "
+    networks:
+      - arachne-net
+
+  # ===========================================================================
+  # Temporal — Durable Workflow Orchestration
+  # ===========================================================================
+  # If a worker crashes mid-execution, Temporal resumes at the exact line
+  # of code on another worker. No lost work, no duplicate requests.
+  temporal:
+    image: temporalio/auto-setup:latest
+    container_name: arachne-temporal
+    ports:
+      - "7233:7233"
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgres-temporal
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+    depends_on:
+      postgres-temporal:
+        condition: service_healthy
+    networks:
+      - arachne-net
+
+  # ---------------------------------------------------------------------------
+  # Temporal UI — Workflow dashboard
+  # ---------------------------------------------------------------------------
+  temporal-ui:
+    image: temporalio/ui:latest
+    container_name: arachne-temporal-ui
+    ports:
+      - "8088:8080"
+    environment:
+      TEMPORAL_ADDRESS: "temporal:7233"
+      TEMPORAL_CORS_ORIGINS: "http://localhost:8088"
+    depends_on:
+      - temporal
+    networks:
+      - arachne-net

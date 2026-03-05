@@ -94,7 +94,6 @@ arachne/
 ## Documentation
 
 - [Architecture Decision Records](docs/adr/) — Every major decision, documented and justified
-- [Proposal](../Proposal.md) — Project vision and constraints
 
 ## License
 
