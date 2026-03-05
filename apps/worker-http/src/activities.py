@@ -229,13 +229,13 @@ async def update_job_status(
 ) -> None:
     """Update job status in PostgreSQL.
 
+    Uses the repository pattern from packages/core-models. Creates a
+    short-lived async session for each status update.
+
     This activity is called at multiple points in the workflow:
     - queued → running (when worker picks up the job)
     - running → completed (after successful extraction)
     - running → failed (after max retries exhausted)
-
-    Note: In Phase 1 this uses a direct DB connection. The repository
-    pattern from Step 6 will provide the actual implementation.
 
     Args:
         job_id: UUID string of the job.
@@ -244,9 +244,94 @@ async def update_job_status(
         raw_html_ref: MinIO reference to raw HTML (for completed).
         result_ref: MinIO reference to extracted data (for completed).
     """
-    # Phase 1 placeholder — Step 6 implements the actual DB repository.
-    # For now, just log the status update.
+    import uuid
+
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    from arachne_models.db.repositories import JobRepository
+    from config import WorkerConfig
+
+    config = WorkerConfig()
+    engine = create_async_engine(config.postgres_dsn)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with session_factory() as session:
+        repo = JobRepository(session)
+        await repo.update_status(
+            uuid.UUID(job_id),
+            status,
+            error_message=error_message,
+            raw_html_ref=raw_html_ref,
+            result_ref=result_ref,
+        )
+        await session.commit()
+
+    await engine.dispose()
+
     activity.logger.info(
         f"Job {job_id} status → {status}"
         + (f" (error: {error_message})" if error_message else "")
     )
+
+
+@activity.defn
+async def record_crawl_attempt(
+    job_id: str,
+    attempt_number: int,
+    url: str,
+    status_code: int | None = None,
+    elapsed_ms: int | None = None,
+    proxy_used: str | None = None,
+    error: str | None = None,
+    raw_html_ref: str | None = None,
+    response_headers: dict | None = None,
+) -> None:
+    """Record a crawl attempt in the crawl_attempts table.
+
+    Every HTTP request gets logged — successes and failures alike.
+    This creates the audit trail visible at GET /api/v1/jobs/{id}/attempts.
+
+    Args:
+        job_id: UUID string of the job.
+        attempt_number: Which attempt this is (1-based).
+        url: URL that was fetched.
+        status_code: HTTP status code (None if network error).
+        elapsed_ms: Request duration.
+        proxy_used: Proxy address if one was used.
+        error: Error message if the attempt failed.
+        raw_html_ref: MinIO reference if HTML was stored.
+        response_headers: Response headers dict.
+    """
+    import uuid
+
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    from arachne_models.db.repositories import CrawlAttemptRepository
+    from config import WorkerConfig
+
+    config = WorkerConfig()
+    engine = create_async_engine(config.postgres_dsn)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with session_factory() as session:
+        repo = CrawlAttemptRepository(session)
+        await repo.create(
+            job_id=uuid.UUID(job_id),
+            attempt_number=attempt_number,
+            url=url,
+            status_code=status_code,
+            elapsed_ms=elapsed_ms,
+            proxy_used=proxy_used,
+            error=error,
+            raw_html_ref=raw_html_ref,
+            response_headers=response_headers,
+        )
+        await session.commit()
+
+    await engine.dispose()
+
+    activity.logger.info(
+        f"Recorded crawl attempt #{attempt_number} for job {job_id} — "
+        + (f"status={status_code}" if status_code else f"error={error}")
+    )
+
