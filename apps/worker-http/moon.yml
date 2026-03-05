@@ -1,0 +1,14 @@
+language: 'python'
+type: 'application'
+
+tasks:
+  dev:
+    command: 'python -m src.main'
+    options:
+      runInCI: false
+  test:
+    command: 'pytest tests/ -v'
+  lint:
+    command: 'ruff check src/'
+  fmt:
+    command: 'ruff format src/'

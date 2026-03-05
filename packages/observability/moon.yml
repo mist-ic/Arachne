@@ -1,0 +1,10 @@
+language: 'python'
+type: 'library'
+
+tasks:
+  test:
+    command: 'pytest tests/ -v'
+  lint:
+    command: 'ruff check src/'
+  fmt:
+    command: 'ruff format src/'

@@ -1,0 +1,66 @@
+# ============================================================
+# Arachne Monorepo .gitignore
+# Careful: Python + Node.js coexist — don't over-ignore
+# ============================================================
+
+# ----- Python -----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+.eggs/
+*.whl
+.venv/
+venv/
+env/
+.python-version
+
+# Python build (scoped to avoid colliding with Node dist/)
+# Node dist/ is built inside Docker, never committed
+dist/
+build/
+
+# ----- Node.js -----
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# ----- Moonrepo -----
+.moon/cache
+.moon/docker
+
+# ----- IDE -----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ----- Docker -----
+docker-compose.override.yml
+
+# ----- Environment -----
+# Ignore secrets, but .env.example files are allowed
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ----- Testing -----
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.next/
+
+# ----- Logs (scoped, not blanket *.log) -----
+npm-debug.log*
+debug.log

@@ -1,0 +1,17 @@
+# https://moonrepo.dev/docs/config/workspace
+$schema: './cache/schemas/workspace.json'
+
+# Project discovery — scan these directories for moon projects
+projects:
+  - 'apps/*'
+  - 'packages/*'
+
+# Version control
+vcs:
+  manager: 'git'
+  defaultBranch: 'main'
+
+# Codeowners generation (optional, useful for portfolio signal)
+codeowners:
+  globalPaths:
+    '*': ['@praveensonesha']
