@@ -7,3 +7,4 @@ Every significant architectural decision in Arachne is documented here.
 | [001](001-moonrepo-for-monorepo.md) | Moonrepo for monorepo management | Accepted |
 | [002](002-bun-over-pnpm.md) | Bun over pnpm for JS/TS toolchain | Accepted |
 | [003](003-redpanda-over-kafka.md) | Redpanda over Apache Kafka | Accepted |
+| [004](004-temporal-for-orchestration.md) | Temporal for workflow orchestration | Accepted |
