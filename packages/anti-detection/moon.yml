@@ -1,0 +1,9 @@
+language: python
+
+tasks:
+  lint:
+    command: ruff check src/
+  format:
+    command: ruff format src/
+  test:
+    command: pytest tests/ -v
