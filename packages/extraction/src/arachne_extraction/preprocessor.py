@@ -328,7 +328,6 @@ def html_to_markdown(
     html_content: str,
     *,
     use_citations: bool = True,
-    strip_tags_list: list[str] | None = None,
 ) -> str:
     """Convert pruned HTML to clean, LLM-friendly Markdown.
 
@@ -339,7 +338,6 @@ def html_to_markdown(
         html_content: Pruned HTML string.
         use_citations: If True, convert inline links to citation format
             [text][1] with footnotes. Reduces token waste on long URLs.
-        strip_tags_list: Additional tags to strip (content preserved).
 
     Returns:
         Clean markdown string.
@@ -357,7 +355,6 @@ def html_to_markdown(
                  "p", "br", "hr", "blockquote", "pre", "code",
                  "ul", "ol", "li", "b", "strong", "i", "em",
                  "dl", "dt", "dd", "sup", "sub"],
-        strip=strip_tags_list or [],
     )
 
     markdown = converter.convert(html_content)

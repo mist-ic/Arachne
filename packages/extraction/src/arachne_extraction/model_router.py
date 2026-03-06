@@ -354,9 +354,20 @@ class ComplexityEstimator:
         These indicate that HTML extraction may fail and vision-based
         extraction might be needed.
         """
+        stripped = markdown.strip()
+
+        # Short content is only suspicious if it's also structureless
+        # (no headings, lists, or clear sentences). A short product
+        # page with headings and bullet points is fine.
+        short_and_structureless = (
+            len(stripped) < 200
+            and "![" not in markdown
+            and not re.search(r"^[#\-\*\d]", stripped, re.MULTILINE)
+            and not re.search(r"[.!?]\s", stripped)
+        )
+
         signals = [
-            # Very low content-to-markup ratio (lots of HTML, little text)
-            len(markdown.strip()) < 200 and "![" not in markdown,
+            short_and_structureless,
             # Suspicious patterns that survived pruning
             bool(re.search(r"canvas|webgl|svg.*text", markdown, re.IGNORECASE)),
             # Content that's just numbers/codes (obfuscated text)
