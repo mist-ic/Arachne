@@ -6,7 +6,7 @@ Temporal calls these from within the ScrapeWorkflow. If an activity
 fails, Temporal retries it (or not) based on the retry policy.
 
 Activities in this file:
-    fetch_url           — HTTP GET a URL, return HTML + metadata
+    fetch_url           — HTTP GET a URL with TLS spoofing (curl_cffi)
     store_raw_html      — Upload HTML to MinIO, return reference
     publish_crawl_result — Publish event to Redpanda crawl.results topic
     update_job_status   — Update job record in PostgreSQL
@@ -15,12 +15,10 @@ Activities in this file:
 from __future__ import annotations
 
 import logging
-import random
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from time import perf_counter
 
-import httpx
 from temporalio import activity
 
 from errors import (
@@ -39,16 +37,6 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 # Data classes for activity inputs/outputs (must be serializable)
 # ============================================================================
-
-# Basic User-Agent rotation — not stealth, just variety.
-# Phase 2 replaces this with browser-fingerprint-matched UA strings.
-_USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15",
-]
 
 
 @dataclass
@@ -73,14 +61,19 @@ class StoreResult:
 
 @activity.defn
 async def fetch_url(url: str, headers: dict[str, str] | None = None) -> FetchResult:
-    """Fetch a URL using httpx. Phase 1 — no TLS spoofing.
+    """Fetch a URL with browser-identical TLS/JA4 fingerprints.
 
-    In Phase 2, this switches to curl_cffi for browser-identical TLS/JA4
-    fingerprints. The activity interface stays the same — only the
-    HTTP client implementation changes.
+    Uses curl_cffi via StealthHttpClient to produce requests that are
+    indistinguishable from real browser traffic at the TLS layer. This
+    replaces Phase 1's plain httpx client.
 
-    Error routing:
-        403 → HTTP403Error (retryable — Phase 2 escalates to browser)
+    The curl_cffi `impersonate` parameter replicates exact browser TLS
+    ClientHello signatures (JA4), HTTP/2 SETTINGS frames, and header
+    ordering. Browser profiles are rotated across sessions but kept
+    consistent within a session (per-domain).
+
+    Error routing (unchanged from Phase 1):
+        403 → HTTP403Error (retryable — Evasion Router escalates to browser)
         429 → HTTP429Error (retryable with backoff)
         503 → HTTP503Error (retryable — transient server issue)
         404 → HTTP404Error (non-retryable — dead resource)
@@ -88,41 +81,32 @@ async def fetch_url(url: str, headers: dict[str, str] | None = None) -> FetchRes
 
     Args:
         url: Target URL to fetch.
-        headers: Optional request headers. User-Agent auto-rotated if not set.
+        headers: Optional extra request headers.
 
     Returns:
         FetchResult with HTML, status code, response headers, and timing.
     """
-    request_headers = {
-        "User-Agent": random.choice(_USER_AGENTS),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-    }
-    if headers:
-        request_headers.update(headers)
+    from arachne_stealth import StealthHttpClient
 
-    activity.logger.info(f"Fetching {url}")
-    start = perf_counter()
+    activity.logger.info(f"Fetching {url} (curl_cffi stealth)")
+
+    client = StealthHttpClient()
 
     try:
-        async with httpx.AsyncClient(
-            follow_redirects=True,
-            timeout=httpx.Timeout(25.0, connect=10.0),
-        ) as client:
-            response = await client.get(url, headers=request_headers)
-    except httpx.ConnectError as e:
-        raise NetworkError(f"Connection failed: {url}", url=url) from e
-    except httpx.TimeoutException as e:
-        raise NetworkError(f"Timeout: {url}", url=url) from e
-    except httpx.HTTPError as e:
+        result = await client.fetch(url, headers=headers)
+    except Exception as e:
+        await client.close_all()
+        error_msg = str(e)
+        if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+            raise NetworkError(f"Timeout: {url}", url=url) from e
+        if "connect" in error_msg.lower() or "resolve" in error_msg.lower():
+            raise NetworkError(f"Connection failed: {url}", url=url) from e
         raise NetworkError(f"HTTP error: {url} — {e}", url=url) from e
 
-    elapsed_ms = int((perf_counter() - start) * 1000)
+    await client.close_all()
 
     # Route errors to typed exceptions for Temporal retry policy
-    match response.status_code:
+    match result.status_code:
         case 403:
             raise HTTP403Error(f"Blocked by anti-bot: {url}", status_code=403, url=url)
         case 429:
@@ -137,15 +121,23 @@ async def fetch_url(url: str, headers: dict[str, str] | None = None) -> FetchRes
             raise HTTP407Error(f"Proxy auth required: {url}", status_code=407, url=url)
 
     # Raise for any other 4xx/5xx not explicitly handled
-    response.raise_for_status()
+    if result.status_code >= 400:
+        raise FetchError(
+            f"HTTP {result.status_code}: {url}",
+            status_code=result.status_code,
+            url=url,
+        )
 
-    activity.logger.info(f"Fetched {url} — {response.status_code} in {elapsed_ms}ms ({len(response.text)} chars)")
+    activity.logger.info(
+        f"Fetched {url} — {result.status_code} in {result.elapsed_ms}ms "
+        f"({len(result.html)} chars, profile={result.profile_used})"
+    )
 
     return FetchResult(
-        html=response.text,
-        status_code=response.status_code,
-        headers=dict(response.headers),
-        elapsed_ms=elapsed_ms,
+        html=result.html,
+        status_code=result.status_code,
+        headers=result.headers,
+        elapsed_ms=result.elapsed_ms,
     )
 
 

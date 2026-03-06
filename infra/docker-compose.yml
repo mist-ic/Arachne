@@ -4,9 +4,9 @@
 # One command to rule them all: docker compose -f infra/docker-compose.yml up -d
 #
 # Core infrastructure + application services:
-#   Infrastructure: Redpanda, PostgreSQL, MinIO, Temporal
+#   Infrastructure: Redpanda, PostgreSQL, MinIO, Temporal, Ollama
 #   Web UIs:        Redpanda Console, MinIO Console, Temporal UI
-#   Applications:   api-gateway, worker-http
+#   Applications:   api-gateway, worker-http, worker-stealth, extraction-engine
 # =============================================================================
 
 networks:
@@ -18,6 +18,7 @@ volumes:
   pg_data:
   pg_temporal_data:
   minio_data:
+  ollama_data:
 
 
 services:
@@ -267,6 +268,106 @@ services:
       redpanda:
         condition: service_healthy
       minio:
+        condition: service_healthy
+    networks:
+      - arachne-net
+
+  # ===========================================================================
+  # Arachne Stealth Worker — Browser-Based Temporal Activity Worker
+  # ===========================================================================
+  # Handles jobs escalated from worker-http by the Evasion Router.
+  # Uses Camoufox (Firefox, C++ stealth) and Pydoll (Chrome, Cloudflare).
+  # Lower concurrency than HTTP worker — browsers are resource-heavy.
+  worker-stealth:
+    build:
+      context: ..
+      dockerfile: apps/worker-stealth/Dockerfile
+    container_name: arachne-worker-stealth
+    environment:
+      ARACHNE_TEMPORAL_ADDRESS: "temporal:7233"
+      ARACHNE_POSTGRES_DSN: "postgresql+asyncpg://arachne:arachne@postgres:5432/arachne"
+      ARACHNE_REDPANDA_BROKERS: "redpanda:9092"
+      ARACHNE_MINIO_ENDPOINT: "minio:9000"
+      ARACHNE_MINIO_ACCESS_KEY: "arachne"
+      ARACHNE_MINIO_SECRET_KEY: "arachne123"
+      ARACHNE_BROWSER_BACKEND: "camoufox"
+      ARACHNE_BROWSER_HEADLESS: "true"
+      ARACHNE_LOG_LEVEL: "INFO"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+      redpanda:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - arachne-net
+
+  # ===========================================================================
+  # Ollama — Local Model Inference Server
+  # ===========================================================================
+  # Runs open-source LLMs and vision models locally for extraction and
+  # CAPTCHA solving. Free inference — no per-call API charges.
+  # GPU passthrough: docker compose up --gpus all
+  ollama:
+    image: ollama/ollama:latest
+    container_name: arachne-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - arachne-net
+    # Uncomment for GPU support (requires NVIDIA Container Toolkit):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ===========================================================================
+  # Arachne Extraction Engine — AI Extraction Temporal Worker
+  # ===========================================================================
+  # Handles LLM-based structured extraction, auto-schema discovery,
+  # and CAPTCHA solving. Listens on the "extract-ai" task queue.
+  # Uses Ollama for local models and cloud APIs (Gemini) for frontier models.
+  extraction-engine:
+    build:
+      context: ..
+      dockerfile: apps/extraction-engine/Dockerfile
+    container_name: arachne-extraction-engine
+    environment:
+      ARACHNE_TEMPORAL_ADDRESS: "temporal:7233"
+      ARACHNE_POSTGRES_DSN: "postgresql+asyncpg://arachne:arachne@postgres:5432/arachne"
+      ARACHNE_REDPANDA_BROKERS: "redpanda:9092"
+      ARACHNE_MINIO_ENDPOINT: "minio:9000"
+      ARACHNE_MINIO_ACCESS_KEY: "arachne"
+      ARACHNE_MINIO_SECRET_KEY: "arachne123"
+      ARACHNE_OLLAMA_BASE_URL: "http://ollama:11434"
+      ARACHNE_DEFAULT_MODEL: "gemini/gemini-2.5-flash"
+      ARACHNE_COST_MODE: "balanced"
+      ARACHNE_GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      ARACHNE_LOG_LEVEL: "INFO"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+      redpanda:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
     networks:
       - arachne-net

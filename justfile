@@ -19,11 +19,11 @@ down:
 
 # Start infrastructure only (no app services)
 infra-up:
-    docker compose -f infra/docker-compose.yml up -d redpanda redpanda-console postgres postgres-temporal minio minio-init temporal temporal-ui
+    docker compose -f infra/docker-compose.yml up -d redpanda redpanda-console postgres postgres-temporal minio minio-init temporal temporal-ui ollama
 
 # Start infrastructure with verbose logging
 infra-up-dev:
-    docker compose -f infra/docker-compose.yml -f infra/docker-compose.dev.yml up -d redpanda redpanda-console postgres postgres-temporal minio minio-init temporal temporal-ui
+    docker compose -f infra/docker-compose.yml -f infra/docker-compose.dev.yml up -d redpanda redpanda-console postgres postgres-temporal minio minio-init temporal temporal-ui ollama
 
 # View infrastructure logs
 infra-logs:
@@ -55,7 +55,28 @@ lint:
 
 # Run all tests
 test:
-    pytest apps/api-gateway/tests/ apps/worker-http/tests/ -v
+    pytest apps/api-gateway/tests/ apps/worker-http/tests/ packages/extraction/tests/ -v
+
+# Run extraction package tests only
+test-extraction:
+    pytest packages/extraction/tests/ -v
+
+# ============================================================
+# Ollama (Local Models)
+# ============================================================
+
+# Pull recommended models for extraction
+ollama-pull:
+    docker exec arachne-ollama ollama pull qwen3:8b
+    docker exec arachne-ollama ollama pull gemma3:27b
+
+# Pull vision model for CAPTCHA solving (requires GPU with ≥12GB VRAM)
+ollama-pull-vision:
+    docker exec arachne-ollama ollama pull qwen3-vl:32b
+
+# List loaded Ollama models
+ollama-models:
+    docker exec arachne-ollama ollama list
 
 # ============================================================
 # Utilities
@@ -67,5 +88,6 @@ urls:
     @echo "Temporal UI:    http://localhost:8088"
     @echo "Redpanda:       http://localhost:8080"
     @echo "MinIO Console:  http://localhost:9001  (user: arachne / pass: arachne123)"
+    @echo "Ollama:         http://localhost:11434"
     @echo "PG Arachne:     localhost:5432  (user: arachne / pass: arachne)"
     @echo "PG Temporal:    localhost:5433  (user: temporal / pass: temporal)"

@@ -1,11 +1,10 @@
 [project]
 name = "arachne-worker-http"
 version = "0.1.0"
-description = "Temporal worker for HTTP fetching — the first tier of Arachne's crawl pipeline"
+description = "Temporal worker for HTTP fetching with TLS fingerprint spoofing via curl_cffi"
 requires-python = ">=3.13"
 dependencies = [
     "temporalio>=1.9,<2",
-    "httpx>=0.28,<1",
     "pydantic-settings>=2.7,<3",
     "structlog>=24.4,<25",
     "lxml>=5.3,<6",
@@ -13,6 +12,7 @@ dependencies = [
     "arachne-models",
     "arachne-messaging",
     "arachne-storage",
+    "arachne-stealth",
 ]
 
 [build-system]

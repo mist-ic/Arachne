@@ -66,6 +66,9 @@ class ExtractionRequestEvent(BaseModel):
     job_id: UUID
     raw_html_ref: str  # MinIO object reference
     extraction_schema: dict | None = None
+    extraction_method: str = "css_xpath"  # "css_xpath" | "llm" | "auto_schema"
+    model_preference: str | None = None  # LiteLLM model id override
+    cost_mode: str | None = None  # "minimize" | "balanced" | "accuracy"
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -81,4 +84,10 @@ class ExtractionResultEvent(BaseModel):
     extracted_data: dict | None = None  # Inline for small results
     result_ref: str | None = None  # MinIO reference for large results
     error: str | None = None
+    extraction_method: str = "css_xpath"  # "css_xpath" | "llm" | "vision" | "auto_schema"
+    model_used: str | None = None  # LLM model used for extraction
+    tokens_input: int | None = None  # Input token count
+    tokens_output: int | None = None  # Output token count
+    estimated_cost_usd: float | None = None  # Extraction cost
+    confidence: float | None = None  # Extraction confidence
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
