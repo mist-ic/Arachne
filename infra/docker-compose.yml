@@ -3,10 +3,10 @@
 # =============================================================================
 # One command to rule them all: docker compose -f infra/docker-compose.yml up -d
 #
-# Phase 1 services:
+# Core infrastructure + application services:
 #   Infrastructure: Redpanda, PostgreSQL, MinIO, Temporal
 #   Web UIs:        Redpanda Console, MinIO Console, Temporal UI
-#   Applications:   api-gateway, worker-http (added in Step 11)
+#   Applications:   api-gateway, worker-http
 # =============================================================================
 
 networks:

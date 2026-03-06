@@ -1,7 +1,16 @@
-# api-gateway
+# API Gateway
 
-FastAPI control plane — the front door to the Arachne system.
+FastAPI control plane — the single entry point for all client requests.
 
-Handles job submission, status tracking, result retrieval, health checks, and metrics.
+Submits jobs, starts Temporal workflows, serves job status and crawl history.
 
-**Phase 1** — Built in Step 7.
+## Endpoints
+
+| Method | Route | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/jobs` | Submit a scrape job |
+| `GET` | `/api/v1/jobs` | List all jobs |
+| `GET` | `/api/v1/jobs/{id}` | Get job status |
+| `GET` | `/api/v1/jobs/{id}/attempts` | Crawl attempt history |
+| `DELETE` | `/api/v1/jobs/{id}` | Cancel a job |
+| `GET` | `/api/v1/health` | Health check |

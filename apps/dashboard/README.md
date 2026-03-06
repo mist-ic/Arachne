@@ -1,7 +1,7 @@
-# dashboard
+# Dashboard
 
-React + Vite (TypeScript) dashboard for real-time system monitoring.
+React + Vite dashboard for monitoring and managing scrape jobs.
 
-Displays job statuses, crawl history, extraction results, and system metrics.
+Real-time job status, crawl history, extraction results, and system health metrics.
 
-**Phase 4** — Not yet implemented.
+**Not yet implemented.**

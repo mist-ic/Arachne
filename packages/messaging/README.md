@@ -1,5 +1,11 @@
-# messaging
+# Messaging
 
-Redpanda (Kafka-compatible) producer/consumer wrappers with Pydantic serialization.
+Redpanda producer/consumer wrappers with automatic Pydantic serialization and Zstandard compression.
 
-**Phase 1** — Built in Step 4.
+Thin wrappers around `confluent-kafka` that automatically serialize/deserialize Pydantic events. Redpanda is 100% Kafka API compatible.
+
+## Usage
+
+```python
+from arachne_messaging import ArachneProducer, ArachneConsumer, TopicConfig
+```

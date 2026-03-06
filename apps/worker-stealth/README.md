@@ -1,7 +1,7 @@
-# worker-stealth
+# Worker Stealth
 
-Stealth browser worker — the Evasion Engine's execution layer.
+Stealth browser worker for sites that block standard HTTP clients.
 
-Uses Camoufox (primary) and Pydoll (Cloudflare specialist) for anti-detection browsing with behavioral simulation.
+Uses Camoufox (hardened Firefox) and Pydoll (CDP automation) with full TLS/JA4+ fingerprint spoofing, behavioral simulation, and anti-detection evasion.
 
-**Phase 2** — Not yet implemented.
+**Not yet implemented.**

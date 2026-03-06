@@ -1,5 +1,7 @@
-# anti-detection
+# Anti-Detection
 
-Evasion engine package — TLS/JA4+ fingerprint spoofing, stealth browser orchestration, behavioral simulation, and proxy management.
+Evasion engine for bypassing anti-bot protections.
 
-**Phase 2** — Not yet implemented.
+TLS/JA4+ fingerprint rotation, browser-matched User-Agent generation, behavioral simulation, CAPTCHA solving integration.
+
+**Not yet implemented.**

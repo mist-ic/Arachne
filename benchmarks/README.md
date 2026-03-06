@@ -1,5 +1,5 @@
 # Benchmarks
 
-Performance benchmark scripts for Arachne.
+Performance benchmarks for throughput, latency, and extraction accuracy.
 
-Populated in Phase 4 with throughput, latency, and accuracy benchmarks.
+**Not yet populated.**

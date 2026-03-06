@@ -1,7 +1,7 @@
-# extraction-engine
+# Extraction Engine
 
-AI-powered extraction service — LLM + vision models for structured data extraction.
+AI-powered extraction service with multi-model routing (Gemini 3 Pro, GPT-4o, Claude Sonnet).
 
-Uses `instructor` + Pydantic for schema-bound extraction with multi-model routing.
+Combines rule-based CSS/XPath extraction with LLM-based schema discovery for unknown page structures.
 
-**Phase 3** — Not yet implemented.
+**Not yet implemented.**

@@ -1,5 +1,5 @@
-# extraction
+# Extraction
 
-AI-powered extraction utilities — LLM orchestration, HTML→Markdown pipeline, auto-schema discovery.
+Shared extraction utilities and schemas for rule-based and AI-powered extraction.
 
-**Phase 3** — Not yet implemented.
+**Not yet implemented.**

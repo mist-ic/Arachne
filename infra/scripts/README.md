@@ -1,5 +1,5 @@
-# Infra Scripts
+# Infrastructure Scripts
 
-Initialization scripts for Docker Compose services.
+Helper scripts for Docker Compose service initialization.
 
-- `init-topics.py` — Creates Redpanda topics on startup (Phase 1, Step 4)
+- `init-topics.py` — Creates Redpanda topics on startup

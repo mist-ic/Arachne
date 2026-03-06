@@ -1,7 +1,7 @@
-# observability
+# Observability
 
-OpenTelemetry instrumentation helpers — structured logging, tracing, and metrics setup.
+OpenTelemetry instrumentation, structured logging, and Prometheus metrics for all Arachne services.
 
-Phase 1 exports to console. Phase 4 switches to OTel Collector → ClickHouse (zero app code changes).
-
-**Phase 1** — Built in Step 10.
+- **Logging**: `structlog` with JSON output and context binding
+- **Tracing**: OpenTelemetry SDK with console export (dev) and OTLP gRPC export (production)
+- **Metrics**: Prometheus client with pre-defined counters and histograms for job lifecycle, crawl performance, and extraction
