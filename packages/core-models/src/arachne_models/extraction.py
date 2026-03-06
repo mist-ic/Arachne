@@ -74,7 +74,8 @@ class ExtractionResult(BaseModel):
     """Output of an extraction operation.
 
     Contains the extracted data plus metadata about the extraction
-    (timing, schema used, source URL).
+    (timing, schema used, source URL). Supports both CSS/XPath extraction
+    (Phase 1) and AI-based extraction (Phase 3) with full provenance.
     """
 
     job_id: UUID
@@ -83,3 +84,13 @@ class ExtractionResult(BaseModel):
     schema_hash: str | None = None  # Hash of the schema used
     elapsed_ms: int = 0
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    # --- AI Extraction Provenance (Phase 3) ---
+    extraction_method: str = "css_xpath"  # "css_xpath" | "llm" | "vision" | "auto_schema"
+    model_used: str | None = None  # LiteLLM model id (e.g., "gemini/gemini-2.5-flash")
+    tokens_input: int | None = None  # Input tokens consumed
+    tokens_output: int | None = None  # Output tokens generated
+    estimated_cost_usd: float | None = None  # Estimated cost of the extraction
+    retry_count: int = 0  # Number of retries needed
+    confidence: float | None = None  # Extraction confidence (0.0 - 1.0)
+    cascade_path: list[str] | None = None  # Models tried in cascade order
