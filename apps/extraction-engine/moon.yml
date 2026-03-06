@@ -1,0 +1,7 @@
+language: python
+type: application
+tags:
+  - python
+  - temporal
+  - extraction
+  - ai
