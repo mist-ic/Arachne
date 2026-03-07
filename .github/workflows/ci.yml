@@ -1,0 +1,126 @@
+# =============================================================================
+# Arachne CI Pipeline
+# =============================================================================
+# Runs on every push and PR. Validates:
+#   - Python package linting (Ruff)
+#   - Python type checking (Pyright)
+#   - Python tests (pytest)
+#   - TypeScript/React build (dashboard)
+#   - Docker Compose config validation
+#
+# Runs parallel jobs for maximum speed.
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.13"
+  NODE_VERSION: "22"
+
+jobs:
+  # ===========================================================================
+  # Python Lint + Type Check
+  # ===========================================================================
+  python-lint:
+    name: Python Lint & Types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install ruff pyright
+          pip install -e "packages/extraction[vision,captcha]" \
+                      -e "packages/observability" \
+                      -e "packages/stealth" \
+                      -e "packages/storage"
+
+      - name: Ruff lint
+        run: ruff check packages/ apps/ --output-format=github
+
+      - name: Ruff format check
+        run: ruff format --check packages/ apps/
+
+      - name: Pyright type check
+        run: pyright packages/ apps/
+        continue-on-error: true  # Don't block CI on type errors initially
+
+  # ===========================================================================
+  # Python Tests
+  # ===========================================================================
+  python-test:
+    name: Python Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-asyncio pytest-cov
+          pip install -e "packages/extraction[vision,captcha]" \
+                      -e "packages/observability" \
+                      -e "packages/stealth" \
+                      -e "packages/storage"
+
+      - name: Run tests
+        run: |
+          pytest packages/ apps/ \
+            --cov=packages \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            -v
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: coverage.xml
+          fail_ci_if_error: false
+
+  # ===========================================================================
+  # Dashboard Build
+  # ===========================================================================
+  dashboard-build:
+    name: Dashboard Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        working-directory: apps/dashboard
+        run: bun install --frozen-lockfile
+
+      - name: Type check
+        working-directory: apps/dashboard
+        run: bun run tsc --noEmit
+
+      - name: Build
+        working-directory: apps/dashboard
+        run: bun run build
+
+  # ===========================================================================
+  # Docker Compose Validation
+  # ===========================================================================
+  docker-validate:
+    name: Docker Compose Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate docker-compose.yml
+        run: docker compose -f infra/docker-compose.yml config --quiet

@@ -1,0 +1,76 @@
+// Arachne DevContainer — full development environment in one click.
+// 
+// Features:
+//   - Python 3.13 + Node 22 + Bun
+//   - Docker-in-Docker for the full stack
+//   - Pre-configured VS Code extensions
+//   - Automatic dependency installation
+//
+// Usage: Open in VS Code → "Reopen in Container"
+{
+    "name": "Arachne Dev Environment",
+    "image": "mcr.microsoft.com/devcontainers/python:3.13",
+    "features": {
+        "ghcr.io/devcontainers/features/node:1": {
+            "version": "22"
+        },
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+        "ghcr.io/devcontainers/features/github-cli:1": {},
+        "ghcr.io/oven-sh/bun/devcontainer-feature:1": {
+            "version": "latest"
+        }
+    },
+    "forwardPorts": [
+        8000, // API Gateway
+        5173, // Dashboard (Vite dev)
+        19092, // Redpanda Kafka
+        5432, // PostgreSQL
+        9000, // MinIO
+        11434, // Ollama
+        7233, // Temporal
+        8123, // ClickHouse
+        4317, // OTel Collector gRPC
+        8090 // HyperDX
+    ],
+    "postCreateCommand": "pip install -e 'packages/extraction[vision,captcha]' -e 'packages/observability' -e 'packages/stealth' -e 'packages/storage' && cd apps/dashboard && bun install",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "charliermarsh.ruff",
+                "tamasfe.even-better-toml",
+                "redhat.vscode-yaml",
+                "bradlc.vscode-tailwindcss",
+                "ms-vscode.vscode-typescript-next",
+                "esbenp.prettier-vscode",
+                "ms-azuretools.vscode-docker",
+                "humao.rest-client",
+                "bierner.markdown-mermaid"
+            ],
+            "settings": {
+                "python.defaultInterpreterPath": "/usr/local/bin/python",
+                "python.analysis.typeCheckingMode": "basic",
+                "editor.formatOnSave": true,
+                "editor.minimap.enabled": false,
+                "[python]": {
+                    "editor.defaultFormatter": "charliermarsh.ruff"
+                },
+                "[typescript]": {
+                    "editor.defaultFormatter": "esbenp.prettier-vscode"
+                },
+                "[typescriptreact]": {
+                    "editor.defaultFormatter": "esbenp.prettier-vscode"
+                }
+            }
+        }
+    },
+    "containerEnv": {
+        "ARACHNE_TEMPORAL_ADDRESS": "temporal:7233",
+        "ARACHNE_POSTGRES_DSN": "postgresql+asyncpg://arachne:arachne@postgres:5432/arachne",
+        "ARACHNE_REDPANDA_BROKERS": "redpanda:9092",
+        "ARACHNE_MINIO_ENDPOINT": "minio:9000",
+        "ARACHNE_OLLAMA_BASE_URL": "http://ollama:11434"
+    },
+    "remoteUser": "vscode"
+}
