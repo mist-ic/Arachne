@@ -19,6 +19,7 @@ volumes:
   pg_temporal_data:
   minio_data:
   ollama_data:
+  clickhouse_data:
 
 
 services:
@@ -358,6 +359,8 @@ services:
       ARACHNE_COST_MODE: "balanced"
       ARACHNE_GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
       ARACHNE_LOG_LEVEL: "INFO"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+      OTEL_SERVICE_NAME: "arachne-extraction-engine"
     depends_on:
       postgres:
         condition: service_healthy
@@ -368,6 +371,80 @@ services:
       minio:
         condition: service_healthy
       ollama:
+        condition: service_healthy
+    networks:
+      - arachne-net
+
+  # ===========================================================================
+  # ClickHouse — Columnar Analytics Database
+  # ===========================================================================
+  # Primary storage for OpenTelemetry traces, metrics, and logs.
+  # ClickHouse is 100-1000x faster than Postgres for analytical queries
+  # on time-series telemetry data.
+  clickhouse:
+    image: clickhouse/clickhouse-server:24-alpine
+    container_name: arachne-clickhouse
+    ports:
+      - "8123:8123" # HTTP interface
+      - "9001:9000" # Native TCP (mapped to 9001 to avoid MinIO conflict)
+    environment:
+      CLICKHOUSE_DB: arachne_telemetry
+      CLICKHOUSE_USER: arachne
+      CLICKHOUSE_PASSWORD: arachne123
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test: [ "CMD-SHELL", "clickhouse-client --query 'SELECT 1' || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - arachne-net
+
+  # ===========================================================================
+  # OpenTelemetry Collector — Telemetry Pipeline
+  # ===========================================================================
+  # Receives OTLP data from all services, processes it (batching, enrichment),
+  # and routes to ClickHouse + HyperDX. Central telemetry fan-out.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.100.0
+    container_name: arachne-otel-collector
+    command: [ "--config=/etc/otel-collector-config.yaml" ]
+    ports:
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP HTTP receiver
+      - "13133:13133" # Health check
+      - "55679:55679" # zPages (debug UI)
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --spider -q http://localhost:13133/ || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - arachne-net
+
+  # ===========================================================================
+  # HyperDX — Unified Observability UI
+  # ===========================================================================
+  # Open-source alternative to Datadog. Unified view of logs, traces, metrics,
+  # and session replays. Connected to ClickHouse for data and OTel Collector
+  # for live ingestion.
+  hyperdx:
+    image: hyperdx/hyperdx-local:latest
+    container_name: arachne-hyperdx
+    ports:
+      - "8090:8080" # HyperDX UI (mapped to 8090 to avoid conflicts)
+    environment:
+      HYPERDX_LOG_LEVEL: info
+    depends_on:
+      otel-collector:
         condition: service_healthy
     networks:
       - arachne-net
