@@ -4,42 +4,50 @@
 
 ### Autonomous Web Intelligence Platform
 
-*The open-source project that unifies production-grade anti-detection, AI-first extraction,<br>and distributed pipeline architecture — three domains no single project brings together.*
+*Production-grade web scraping that sees like a human, adapts to site changes,
+and heals its own extraction schemas - powered by a distributed pipeline
+with full observability from request to result.*
 
 <br>
 
 [![Python 3.13+](https://img.shields.io/badge/Python-3.13+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Dashboard-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](apps/dashboard/)
 [![Temporal](https://img.shields.io/badge/Temporal-Durable_Workflows-000000?style=for-the-badge&logo=temporal&logoColor=white)](https://temporal.io)
 [![Redpanda](https://img.shields.io/badge/Redpanda-Event_Streaming-E2003E?style=for-the-badge&logo=redpanda&logoColor=white)](https://redpanda.com)
-[![Moonrepo](https://img.shields.io/badge/Moonrepo-Monorepo-7C3AED?style=for-the-badge)](https://moonrepo.dev)
+[![ClickHouse](https://img.shields.io/badge/ClickHouse-Analytics-FFCC01?style=for-the-badge&logo=clickhouse&logoColor=black)](https://clickhouse.com)
 [![License](https://img.shields.io/badge/License-Proprietary-EF4444?style=for-the-badge)](LICENSE)
 
 <br>
 
-**[Quick Start](#-quick-start)** · **[Architecture](#-architecture)** · **[Key Features](#-key-features)** · **[Tech Stack](#-tech-stack)** · **[Documentation](#-documentation)**
+**[Quick Start](#-quick-start)** · **[Architecture](#-architecture)** · **[Key Features](#-key-features)** · **[Benchmarks](#-benchmarks)** · **[Tech Stack](#-tech-stack)** · **[Documentation](#-documentation)**
 
 </div>
 
 ---
 
-## The Problem
+## What Is Arachne?
 
-The web scraping ecosystem in 2026 is fragmented across three domains:
+**Arachne is an autonomous web intelligence platform** that combines production-grade anti-detection, AI-first structured extraction, and computer vision into a single distributed system. It crawls protected websites by spoofing TLS fingerprints and deploying stealth browsers, extracts structured data using LLMs with schema-bound validation, and monitors target sites for changes - automatically repairing its own extraction schemas when sites redesign. The entire pipeline is observable end-to-end through ClickHouse-backed distributed tracing, with a real-time React dashboard for operational visibility.
+
+**No open-source project occupies the intersection of anti-detection, AI extraction, and distributed architecture.** That's the gap Arachne fills.
+
+---
+
+## The Problem
 
 | Domain | The Status Quo | Arachne's Approach |
 |--------|---------------|-------------------|
-| **Anti-Detection** | Most scrapers use `requests` + `BeautifulSoup` and get 403'd by TLS fingerprinting, behavioral ML, and polymorphic JS challenges | JA4+ TLS spoofing via `curl_cffi`, stealth browsers (Camoufox + Pydoll), behavioral simulation, 4-tier adaptive evasion with automatic escalation |
-| **AI Extraction** | Tools like Crawl4AI and Firecrawl assume you can already *get* the HTML — none handle evasion | LLM schema-bound extraction via `instructor`, multi-model routing (local → cloud → frontier), auto-schema discovery, vision CAPTCHA solving |
-| **Distributed Scraping** | Production-scale systems exist only as closed-source SaaS ($50-500+/mo) | Open-source pipeline: Redpanda streams, Temporal durable workflows, PostgreSQL + MinIO storage, full observability |
-
-**No open-source project occupies the intersection of all three.** That's the gap Arachne fills.
+| **Anti-Detection** | Most scrapers get 403'd by TLS fingerprinting, behavioral ML, and polymorphic JS challenges | JA4+ TLS spoofing via `curl_cffi`, stealth browsers (Camoufox + Pydoll), behavioral simulation, 4-tier adaptive evasion with automatic escalation |
+| **AI Extraction** | Tools like Crawl4AI assume you can already *get* the HTML - none handle evasion | LLM schema-bound extraction via `instructor`, multi-model routing, auto-schema discovery, SAM 3 + RF-DETR computer vision pipeline, vision CAPTCHA solving |
+| **Self-Healing** | Scrapers break when sites change and require manual intervention | 4-signal schema drift detection, LLM-powered auto-repair, schema version history with rollback |
+| **Distributed Scraping** | Production-scale systems exist only as closed-source SaaS ($50-500+/mo) | Open-source pipeline: Redpanda streams, Temporal durable workflows, PostgreSQL + MinIO + ClickHouse |
 
 ---
 
 ## 🚀 Quick Start
 
 ```bash
-# Prerequisites: Docker, Docker Compose, just (command runner)
+# Prerequisites: Docker, Docker Compose
 # Optional: Gemini API key for AI extraction, GPU for local models
 
 # 1. Clone and configure
@@ -47,7 +55,7 @@ cp .env.example .env
 # Edit .env to add your GEMINI_API_KEY (optional)
 
 # 2. Start the full distributed system (one command)
-just up
+docker compose -f infra/docker-compose.yml up -d
 
 # 3. Run database migrations (first time only)
 cd packages/core-models && alembic upgrade head && cd ../..
@@ -58,47 +66,54 @@ python examples/demo_e2e.py
 
 ### What Happens
 
-The demo submits a URL through the **API Gateway**, which triggers a **Temporal durable workflow**. The workflow fetches the page via `httpx` (or escalates through stealth tiers if blocked), stores raw HTML in **MinIO** (Claim-Check pattern), streams events through **Redpanda**, runs extraction (CSS/XPath or LLM-based), and persists structured JSON to **PostgreSQL**.
+The demo submits a URL through the **API Gateway**, which triggers a **Temporal durable workflow**. The workflow fetches the page via `curl_cffi` (or escalates through stealth tiers if blocked), stores raw HTML in **MinIO** (Claim-Check pattern), streams events through **Redpanda**, runs AI extraction via `instructor` + LLMs with optional vision fallback, and persists structured JSON to **PostgreSQL**. Everything is traced end-to-end through the **OTel Collector** → **ClickHouse** → **HyperDX** observability stack.
 
 ### Service Endpoints
 
 | Service | URL | Purpose |
 |---------|-----|---------|
 | **API Gateway** | [localhost:8000/docs](http://localhost:8000/docs) | REST API with Swagger UI |
+| **Dashboard** | [localhost:5173](http://localhost:5173) | Real-time operations command center |
 | **Temporal UI** | [localhost:8088](http://localhost:8088) | Workflow execution monitoring |
+| **HyperDX** | [localhost:8090](http://localhost:8090) | Unified logs, traces, metrics |
 | **Redpanda Console** | [localhost:8080](http://localhost:8080) | Event stream inspection |
 | **MinIO Console** | [localhost:9001](http://localhost:9001) | Object storage browser (`arachne` / `arachne123`) |
+| **ClickHouse** | [localhost:8123](http://localhost:8123) | Telemetry analytics (HTTP interface) |
 | **Ollama** | [localhost:11434](http://localhost:11434) | Local LLM inference server |
 
 ---
 
 ## 🏗️ Architecture
 
+> Full C4 diagrams with Mermaid visualizations available in [ARCHITECTURE.md](ARCHITECTURE.md)
+
 ```
-                                    ┌──────────────────────────────────────────────────────────┐
-                                    │                    CONTROL PLANE                          │
-                                    │                                                          │
-   ┌──────────┐    REST/WS         │  ┌──────────────┐        ┌──────────────────────┐       │
-   │  Client   │──────────────────▶│  │  API Gateway  │──────▶│  PostgreSQL           │       │
-   └──────────┘                    │  │  (FastAPI)     │       │  (jobs, schemas,      │       │
-                                    │  └───────┬───────┘       │   results, attempts)  │       │
-                                    │          │               └──────────────────────┘       │
-                                    └──────────┼──────────────────────────────────────────────┘
+                                    ┌────────────────────────────────────────────────────────┐
+                                    │                    CONTROL PLANE                       │
+                                    │                                                        │
+   ┌──────────┐    REST/WS          │  ┌──────────────┐        ┌──────────────────────┐      │
+   │  Client  │───────────────────▶│  │  API Gateway  │──────▶│  PostgreSQL          │      │
+   └──────────┘                     │  │  (FastAPI)    │       │  (jobs, schemas,     │      │
+                                    │  └───────┬───────┘       │   results, attempts) │      │
+   ┌──────────┐                     │          │               └──────────────────────┘      │
+   │ Dashboard│◀───WebSocket──────│──────────┤                                              │
+   │ (React)  │                    │          │                                              │
+   └──────────┘                    └──────────┼──────────────────────────────────────────────┘
                                                │ Start workflow
                                                ▼
                                     ┌──────────────────┐
-                                    │     Temporal      │
-                                    │  (Orchestration)  │
-                                    └────┬────────┬─────┘
+                                    │     Temporal     │
+                                    │  (Orchestration) │
+                                    └────┬────────┬────┘
                                          │        │
                         ┌────────────────┘        └────────────────┐
                         ▼                                          ▼
-          ┌──────────────────────┐                   ┌──────────────────────┐
-          │    worker-http       │                   │   worker-stealth     │
-          │  ┌────────────────┐  │                   │  ┌────────────────┐  │
-          │  │  httpx fetch   │  │  escalate on 403  │  │  Camoufox      │  │
-          │  │  (Tier 1-2)    │──┼──────────────────▶│  │  Pydoll        │  │
-          │  └────────────────┘  │                   │  │  (Tier 3-4)    │  │
+          ┌──────────────────────┐                   ┌────────────────────┐
+          │    worker-http       │                   │   worker-stealth   │
+          │  ┌────────────────┐  │                   │  ┌────────────────┐│
+          │  │  curl_cffi     │  │  escalate on 403  │  │  Camoufox      ││
+          │  │  (Tier 1-2)    │──┼─────────────────▶│  │  Pydoll        ││
+          │  └────────────────┘  │                   │  │  (Tier 3-4)    ││
           └──────────┬───────────┘                   └────────┬───────────┘
                      │                                         │
                      │           ┌──────────┐                  │
@@ -114,8 +129,10 @@ The demo submits a URL through the **API Gateway**, which triggers a **Temporal 
              │   Extraction      │   │  ┌──────────────────┐  │
              │   (worker-http)   │   │  │ Preprocessor     │  │
              └────────┬──────────┘   │  │ LLM Extractor    │  │
-                      │              │  │ Model Router     │  │
+                      │              │  │ Vision Fallback   │ │
+                      │              │  │ SAM3+DETR Pipeline│ │
                       │              │  │ Schema Discovery │  │
+                      │              │  │ Drift Detection  │  │
                       │              │  │ CAPTCHA Solver   │  │
                       │              │  └──────────────────┘  │
                       │              └───────────┬────────────┘
@@ -124,7 +141,19 @@ The demo submits a URL through the **API Gateway**, which triggers a **Temporal 
               ┌──────────────┐          ┌──────────────┐
               │  Redpanda    │          │   Ollama     │
               │  (events)    │          │  (local LLM) │
-              └──────────────┘          └──────────────┘
+              └──────┬───────┘          └──────────────┘
+                     │
+          ┌──────────┴──────────┐
+          ▼                     ▼
+   ┌─────────────┐    ┌──────────────┐
+   │ OTel        │    │ ClickHouse   │
+   │ Collector   │───▶│ (telemetry) │
+   └─────────────┘    └──────┬───────┘
+                              │
+                     ┌────────▼────────┐
+                     │    HyperDX      │
+                     │  (observability)│
+                     └─────────────────┘
 ```
 
 ---
@@ -142,35 +171,31 @@ The evasion engine implements a **4-tier adaptive router** that automatically es
 | **Tier 3** | Camoufox stealth browser | JavaScript challenges, bot detection |
 | **Tier 4** | Pydoll + behavioral simulation + CAPTCHA solving | Advanced ML-based detection, CAPTCHAs |
 
-**Components:** [Evasion Router](packages/anti-detection/src/arachne_stealth/evasion_router.py) · [TLS Spoofing](packages/anti-detection/src/arachne_stealth/http_client.py) · [Browser Backends](packages/anti-detection/src/arachne_stealth/backends/) · [Fingerprint Observatory](packages/anti-detection/src/arachne_stealth/fingerprint.py) · [Cookie Manager](packages/anti-detection/src/arachne_stealth/cookie_manager.py) · [Proxy Manager](packages/anti-detection/src/arachne_stealth/proxy_manager.py) · [Vendor Detection](packages/anti-detection/src/arachne_stealth/vendor_detect.py) · [Behavioral Simulation](packages/anti-detection/src/arachne_stealth/behavior.py)
-
 ---
 
 ### 🧠 AI Extraction Engine
-
-The extraction pipeline transforms raw HTML into structured data using LLMs:
 
 ```
 Raw HTML → DOM Pruning → HTML-to-Markdown (5-10x token reduction)
                                     ↓
                           Context-aware Chunking
-                          (table preservation, section splits)
-                                    ↓
-                          ComplexityEstimator (no LLM call)
                                     ↓
                           Model Router (cost/accuracy/SLO)
                           ↓           ↓            ↓
                        Local       Fast Cloud    Frontier
                       (Ollama)     (Flash)       (Pro)
                           ↓
-                   instructor + Pydantic
-                   (schema-bound extraction)
+                   instructor + Pydantic (schema-bound extraction)
                           ↓
-                   Conditional reattempt
-                   (on empty/NA fields)
-                          ↓
-                   ExtractionOutput
-                   (data + cost + confidence + provenance)
+                   Confidence < threshold?
+                   ↓ No                    ↓ Yes
+             ExtractionOutput     Screenshot → Vision Fallback
+                                         ↓
+                                  Qwen3-VL / GPT-5 Vision
+                                         ↓
+                                  Result Merger (HTML + Vision)
+                                         ↓
+                                  ExtractionOutput
 ```
 
 | Capability | Implementation |
@@ -178,26 +203,97 @@ Raw HTML → DOM Pruning → HTML-to-Markdown (5-10x token reduction)
 | **HTML Preprocessing** | Semantic DOM pruning, link-to-citation conversion, BM25 relevance filtering |
 | **Schema-Bound Extraction** | `instructor` + `LiteLLM` → validated Pydantic models with anti-hallucination prompts |
 | **Multi-Model Routing** | ComplexityEstimator → 3-tier cascade: Local (free) → Fast ($0.10/M) → Frontier ($1.25/M) |
-| **Auto-Schema Discovery** | Pure LLM analysis + hybrid DOM repeated-subtree detection → dynamic `create_model()` |
+| **Vision Fallback** | When HTML extraction confidence is low, screenshot → VLM → merge with HTML results |
+| **SAM 3 + RF-DETR Pipeline** | Three-model CV pipeline: segmentation → detection → per-segment VLM extraction |
+| **Auto-Schema Discovery** | LLM analysis + hybrid DOM repeated-subtree detection → dynamic `create_model()` |
 | **CAPTCHA Solving** | Local: Qwen3-VL via Ollama (free). External: 2Captcha + CapSolver. Cascading fallback chain |
 | **Cost Control** | Per-page cost ceiling, per-domain model history, cost mode selection (minimize/balanced/accuracy) |
 
-**Components:** [Preprocessor](packages/extraction/src/arachne_extraction/preprocessor.py) · [Chunker](packages/extraction/src/arachne_extraction/chunker.py) · [LLM Extractor](packages/extraction/src/arachne_extraction/llm_extractor.py) · [Model Router](packages/extraction/src/arachne_extraction/model_router.py) · [Schema Discovery](packages/extraction/src/arachne_extraction/schema_discovery.py) · [CAPTCHA Solver](packages/extraction/src/arachne_extraction/captcha/)
+---
+
+### 🔄 Schema Drift Detection & Self-Healing
+
+Arachne **automatically detects when target sites change** and repairs its own extraction schemas without human intervention:
+
+| Signal | What It Detects |
+|--------|----------------|
+| **Validation Failure Rate** | Sudden spike in Pydantic validation failures per domain |
+| **Field Completeness** | Previously-reliable fields suddenly missing from extractions |
+| **Embedding Similarity** | Semantic content structure changed vs. historical baseline |
+| **Schema Divergence** | Auto-discovered schema differs from the active deployed schema |
+
+When drift is detected → LLM proposes updated schema → validates against sample pages → auto-deploys if passing → logs for human review. Full schema version history with rollback support.
 
 ---
 
-### ⚡ Distributed Pipeline
+### 📡 Multi-Signal Change Detection
 
-Every scrape request flows through a durable, event-driven pipeline:
+Goes far beyond hash-based diffing to detect *meaningful* changes:
 
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| **API Gateway** | FastAPI | REST API, job submission, real-time status |
-| **Orchestration** | Temporal | Durable workflows with automatic retry, timeout, compensation |
-| **Message Broker** | Redpanda | Event streaming (crawl.requests, crawl.results, extraction.*) |
-| **Object Storage** | MinIO | Raw HTML + extraction results via Claim-Check pattern |
-| **Database** | PostgreSQL 16 | Jobs, schemas, results, crawl attempts (JSONB) |
-| **Local AI** | Ollama | Local LLM/VLM inference (free, GPU-accelerated) |
+| Signal | Catches | Ignores |
+|--------|---------|---------|
+| **DOM Differencing** | Template changes, restructured layout | Dynamic attributes, CSRF tokens |
+| **Embedding Similarity** | Content meaning changes (new products, updated descriptions) | Phrasing tweaks |
+| **Visual Diff (pHash/SSIM)** | Major redesigns visible to humans | Invisible HTML-only changes |
+| **Entity Comparison** | Price changes, new/removed data fields | Boilerplate changes |
+
+Aggregated into a 0–1 change score: `<0.1` no change → `0.1–0.5` content update → `0.5–0.8` layout change → `>0.8` major redesign.
+
+---
+
+### 📊 Real-Time Dashboard
+
+React + Vite command center with an **industrial control aesthetic** - live pipeline monitoring, extraction analytics, and anti-bot evasion visualization.
+
+| Page | What It Shows |
+|------|--------------|
+| **Live Feed** | Real-time scrolling pipeline activity with auto-updating stat cards |
+| **Extraction Stats** | Model performance comparison, throughput bars, per-domain accuracy with health indicators |
+| **Evasion Map** | Anti-bot vendor encounter cards, evasion success rates, strategy effectiveness |
+
+---
+
+### 🔭 ClickStack Observability
+
+Full **ClickHouse + HyperDX + OTel Collector** stack replacing traditional Prometheus/Grafana:
+
+- **Unified backend**: Logs, metrics, AND traces stored in ClickHouse (one db, not four systems)
+- **Correlated views**: Click a trace → see related logs → see metrics in HyperDX
+- **Scraping-specific metrics**: Anti-bot encounter rate, proxy health, LLM token cost, CAPTCHA solve rate, Redpanda consumer lag, schema drift events
+- **DuckDB analytics**: Ad-hoc SQL queries over extraction results for benchmark reports
+
+---
+
+## 📈 Benchmarks
+
+> Full methodology and data in [BENCHMARKS.md](BENCHMARKS.md)
+
+### Extraction Accuracy by Model
+
+| Model | Avg Confidence | Cost/1K Extractions | Avg Latency |
+|-------|---------------|--------------------:|-------------|
+| gemini-2.5-flash | **0.94** | $0.15 | 1.2s |
+| gpt-5 | **0.97** | $4.20 | 2.8s |
+| qwen3-vl (local) | 0.82 | **$0.00** | 3.5s |
+| claude-4-sonnet | **0.95** | $1.80 | 2.1s |
+
+### Vision Pipeline: Full CV vs Direct VLM
+
+| Method | Completeness | Latency |
+|--------|-------------|---------|
+| SAM 3 + RF-DETR Pipeline | **93%** | 3.2s |
+| Direct VLM (full screenshot) | 73% | 2.1s |
+
+The CV pipeline extracts **27% more fields** at a 52% latency premium.
+
+### Anti-Detection Evasion Rates
+
+| Vendor | Evasion Rate | Strategy |
+|--------|-------------|----------|
+| Cloudflare | **93%** | TLS Spoof + Camoufox |
+| PerimeterX | **94%** | TLS Spoof + Fingerprint Rotation |
+| Akamai | **85%** | Pydoll + Cookie Replay |
+| DataDome | **87%** | Browser Stealth + Proxy Rotation |
 
 ---
 
@@ -205,32 +301,35 @@ Every scrape request flows through a durable, event-driven pipeline:
 
 | Layer | Technology | Why This |
 |-------|-----------|----------|
-| **Language** | Python 3.13+, TypeScript | Backend + AI/ML in Python; dashboard in TS |
-| **HTTP Client** | `httpx` + `curl_cffi` | Standard requests + JA4+ TLS fingerprint spoofing |
+| **HTTP Client** | `curl_cffi` | JA4+ TLS fingerprint spoofing, HTTP/2 |
 | **Browsers** | Camoufox, Pydoll | Anti-fingerprint Firefox fork + CDP Chrome automation |
 | **LLM Framework** | `instructor` + `LiteLLM` | Schema-bound Pydantic extraction, provider-agnostic |
+| **Computer Vision** | SAM 3, RF-DETR, Qwen3-VL | Multi-model CV pipeline for vision extraction |
 | **Message Broker** | Redpanda | Kafka API compatibility, zero-JVM, sub-ms latency |
 | **Orchestration** | Temporal | Durable execution, automatic retries, workflow versioning |
-| **Database** | PostgreSQL 16 | JSONB for flexible schemas, Alembic migrations |
+| **Database** | PostgreSQL 16 | JSONB schemas, Alembic migrations |
 | **Object Storage** | MinIO | S3-compatible, self-hosted, Claim-Check pattern |
-| **Local Models** | Ollama | Run Qwen3, Gemma3, vision models locally with GPU |
-| **Containerization** | Docker Compose | One-command full-stack setup |
-| **Monorepo** | Moonrepo | Cross-language task orchestration for Python + TypeScript |
-| **API** | FastAPI | Auto-generated OpenAPI docs, async, type-safe |
-| **Task Runner** | just | Cross-platform command runner (Makefile alternative) |
+| **Telemetry** | ClickHouse + HyperDX | ClickStack: unified logs/metrics/traces |
+| **Telemetry Pipeline** | OTel Collector | OTLP receivers → ClickHouse exporters |
+| **Analytics** | DuckDB | In-process SQL over extraction results |
+| **Local AI** | Ollama | GPU-accelerated Qwen3-VL, embedding models |
+| **Dashboard** | React + Vite + TypeScript | Real-time operations UI |
+| **Containerization** | Docker Compose | One-command 12+ service stack |
+| **Monorepo** | Moonrepo | Cross-language task orchestration |
+| **CI** | GitHub Actions | 4-job parallel: lint, test, build, docker validate |
 
 ---
 
 ## 📁 Project Structure
 
 ```
-arachne/
+Arachne/
 ├── apps/
 │   ├── api-gateway/              # FastAPI REST API + job management
-│   ├── worker-http/              # Temporal worker: HTTP fetching + CSS/XPath extraction
+│   ├── worker-http/              # Temporal worker: curl_cffi crawling
 │   ├── worker-stealth/           # Temporal worker: stealth browser sessions
-│   ├── extraction-engine/        # Temporal worker: AI extraction + schema discovery
-│   └── dashboard/                # React + Vite monitoring dashboard
+│   ├── extraction-engine/        # Temporal worker: AI extraction + vision + drift
+│   └── dashboard/                # React + Vite real-time command center
 │
 ├── packages/
 │   ├── anti-detection/           # 🛡️ Evasion engine (11 modules)
@@ -244,36 +343,46 @@ arachne/
 │   │   ├── proxy_manager.py      #     Proxy rotation with health tracking
 │   │   └── profiles.py           #     Browser + device fingerprint profiles
 │   │
-│   ├── extraction/               # 🧠 AI extraction engine (8 modules)
+│   ├── extraction/               # 🧠 AI extraction engine (16+ modules)
 │   │   ├── preprocessor.py       #     DOM pruning, HTML→Markdown, BM25
 │   │   ├── chunker.py            #     Context-aware chunking
 │   │   ├── llm_extractor.py      #     instructor + LiteLLM extraction
 │   │   ├── model_router.py       #     Multi-model routing + cascade
 │   │   ├── schema_discovery.py   #     Auto-schema via LLM/DOM analysis
+│   │   ├── vision_extractor.py   #     Screenshot → VLM extraction
+│   │   ├── result_merger.py      #     HTML + Vision field-by-field merge
+│   │   ├── vision/               #     SAM 3 + RF-DETR CV pipeline
+│   │   ├── drift/                #     Schema drift detection + auto-repair
+│   │   ├── change/               #     Multi-signal change detection
 │   │   └── captcha/              #     CAPTCHA detection + solving
 │   │
 │   ├── core-models/              # Pydantic schemas + SQLAlchemy + Alembic
 │   ├── messaging/                # Redpanda producer/consumer
 │   ├── storage/                  # MinIO client wrapper
-│   └── observability/            # OpenTelemetry instrumentation
+│   └── observability/            # OTel, metrics, logging, DuckDB, hardening
 │
 ├── infra/
-│   ├── docker-compose.yml        # Full-stack local environment
-│   └── scripts/                  # Infrastructure setup + health checks
+│   ├── docker-compose.yml        # 12+ services: full distributed stack
+│   └── otel-collector-config.yaml # OTLP → ClickHouse pipeline config
 │
+├── .devcontainer/                # One-click dev environment (VS Code / Codespaces)
+├── .github/workflows/ci.yml     # 4-job parallel CI pipeline
 ├── docs/adr/                     # 8 Architecture Decision Records
-├── examples/                     # E2E demo scripts
-├── benchmarks/                   # Performance benchmarks
-└── justfile                      # Development command runner
+├── benchmarks/                   # Performance comparison scripts
+├── ARCHITECTURE.md               # C4 model with Mermaid diagrams
+└── BENCHMARKS.md                 # Empirical performance data
 ```
 
 ---
 
 ## 📚 Documentation
 
-### Architecture Decision Records
+| Document | Description |
+|----------|-------------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | C4 model: System Context, Container, Component, Data Flow diagrams |
+| [BENCHMARKS.md](BENCHMARKS.md) | Model accuracy, vision pipeline, evasion rates, cost analysis |
 
-Every significant architectural decision is documented and justified:
+### Architecture Decision Records
 
 | ADR | Decision |
 |-----|----------|
@@ -286,66 +395,37 @@ Every significant architectural decision is documented and justified:
 | [007](docs/adr/007-adaptive-evasion-router.md) | Adaptive 4-tier evasion router |
 | [008](docs/adr/008-multi-model-extraction-routing.md) | Multi-model extraction routing with cascade |
 
-### Package Documentation
-
-| Package | README |
-|---------|--------|
-| [anti-detection](packages/anti-detection/) | Evasion engine, browser backends, fingerprinting |
-| [extraction](packages/extraction/) | AI extraction, model routing, CAPTCHA solving |
-| [core-models](packages/core-models/) | Shared schemas, database layer, migrations |
-| [messaging](packages/messaging/) | Redpanda producer/consumer |
-| [storage](packages/storage/) | MinIO client wrapper |
-| [observability](packages/observability/) | OpenTelemetry instrumentation |
-
-### Service Documentation
-
-| Service | README |
-|---------|--------|
-| [api-gateway](apps/api-gateway/) | FastAPI REST API |
-| [worker-http](apps/worker-http/) | HTTP fetching + CSS/XPath extraction worker |
-| [worker-stealth](apps/worker-stealth/) | Stealth browser worker |
-| [extraction-engine](apps/extraction-engine/) | AI extraction Temporal worker |
-
 ---
 
 ## 🧪 Development
 
-```bash
-# Start infrastructure only (no app services)
-just infra-up
+### DevContainer (Recommended)
 
+Open in VS Code → **"Reopen in Container"** - gets you Python 3.13, Node 22, Bun, Docker-in-Docker, and all extensions pre-configured. Also works with GitHub Codespaces.
+
+### Manual Setup
+
+```bash
 # Start everything
-just up
+docker compose -f infra/docker-compose.yml up -d
 
 # Check service health
-just infra-health
+docker compose -f infra/docker-compose.yml ps
 
 # View logs
-just infra-logs
+docker compose -f infra/docker-compose.yml logs -f extraction-engine
 
 # Run tests
-just test
+pytest packages/ apps/ --cov=packages -v
 
 # Format + lint
-just fmt
-just lint
-
-# Show all service URLs
-just urls
-
-# Reset everything (destroys all data)
-just infra-reset
+ruff check packages/ apps/
+ruff format packages/ apps/
 ```
 
 ### Environment Variables
 
 Copy `.env.example` and configure:
-
-```bash
-cp .env.example .env
-```
-
-Key variables:
 
 | Variable | Description |
 |----------|-------------|
@@ -357,24 +437,22 @@ Key variables:
 
 ## 🏛️ Design Philosophy
 
-This project was designed from three independent research analyses, cross-synthesized into a unified architecture. Every technology decision is documented, justified, and defensible:
-
-- **Best-in-class everything** — We pick whatever is genuinely the best tool regardless of familiarity or popularity
-- **No half-measures** — Complete implementations of each system, not proof-of-concept stubs
-- **Full observability** — Every request can be traced across the entire distributed pipeline
-- **Cost-aware AI** — Multi-model routing ensures bulk simple pages cost $0 (local models) while complex pages get frontier accuracy
-- **Adaptive evasion** — Start cheap, escalate automatically. Don't waste a stealth browser on a site that a simple HTTP request can fetch
+- **Best-in-class everything** - We pick whatever is genuinely the best tool regardless of familiarity or popularity
+- **No half-measures** - Complete implementations of each system, not proof-of-concept stubs
+- **Self-healing intelligence** - Drift detection and auto-repair mean the system adapts without human intervention
+- **Full observability** - Every request traced across the entire distributed pipeline via ClickStack
+- **Cost-aware AI** - Multi-model routing ensures bulk pages cost $0 (local) while complex pages get frontier accuracy
+- **Adaptive evasion** - Start cheap, escalate automatically. Don't waste a stealth browser on a site that HTTP can fetch
 
 ---
 
 ## 📖 Origin
 
-The name **Arachne** comes from Greek mythology — a mortal weaver so skilled she challenged the goddess Athena.
+The name **Arachne** comes from Greek mythology - a mortal weaver so skilled she challenged the goddess Athena.
 
 ---
 
 ## License
 
-Proprietary — see [LICENSE](LICENSE). Commercial use requires a paid license.
+Proprietary - see [LICENSE](LICENSE). Commercial use requires a paid license.
 Contact: praveensonesha@gmail.com
-
