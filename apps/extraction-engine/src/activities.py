@@ -6,7 +6,8 @@ Each activity is retryable and idempotent. They execute on the
 or directly by the API gateway.
 
 Activities:
-    extract_with_llm     — Full AI extraction pipeline
+    extract_with_llm     — Full AI extraction pipeline (with vision fallback)
+    extract_with_vision   — Vision-only extraction from screenshots
     discover_page_schema — Auto-schema discovery for unknown sites
     solve_page_captcha   — CAPTCHA solving (local → external fallback)
 """
@@ -53,6 +54,30 @@ class LLMExtractionResult:
     estimated_cost_usd: float = 0.0
     confidence: float = 0.0
     extraction_method: str = "llm"
+
+
+@dataclass
+class VisionExtractionInput:
+    """Input for the extract_with_vision activity."""
+
+    job_id: str
+    url: str
+    extraction_schema: dict | None = None
+    screenshot_ref: str | None = None  # Pre-captured screenshot in MinIO
+    model_preference: str | None = None
+
+
+@dataclass
+class VisionExtractionResult:
+    """Output of the extract_with_vision activity."""
+
+    result_ref: str
+    field_count: int
+    elapsed_ms: int
+    model_used: str
+    confidence: float = 0.0
+    extraction_method: str = "vision"
+    screenshot_ref: str = ""
 
 
 @dataclass
@@ -201,17 +226,80 @@ async def extract_with_llm(params: LLMExtractionInput) -> LLMExtractionResult:
         domain=domain,
     )
 
-    # Step 5: Store results in MinIO
+    # Step 5: Vision fallback if confidence is low
+    VISION_FALLBACK_THRESHOLD = 0.5
+    final_data = extraction_output.data
+    extraction_method = extraction_output.extraction_method
+
+    if extraction_output.confidence < VISION_FALLBACK_THRESHOLD:
+        activity.logger.info(
+            f"Low confidence ({extraction_output.confidence:.2f}) for job {params.job_id}, "
+            f"triggering vision fallback"
+        )
+
+        try:
+            from arachne_extraction.vision_extractor import (
+                VisionExtractor,
+                VisionExtractionConfig,
+                capture_screenshot,
+            )
+            from arachne_extraction.result_merger import ResultMerger
+
+            # Capture screenshot
+            screenshot_bytes, screenshot_ref = await capture_screenshot(
+                url=params.url,
+                minio_client=minio,
+                job_id=params.job_id,
+            )
+
+            # Vision extraction
+            vision_config = VisionExtractionConfig(
+                ollama_base_url=settings.ollama_base_url,
+                api_key=settings.gemini_api_key,
+            )
+            vision_extractor = VisionExtractor(config=vision_config)
+            vision_output = await vision_extractor.extract_from_screenshot(
+                screenshot=screenshot_bytes,
+                schema=schema_model,
+                url=params.url,
+            )
+
+            # Merge HTML + vision results
+            if vision_output.data is not None:
+                merger = ResultMerger()
+                merge_result = merger.merge(
+                    html_result=extraction_output.data,
+                    vision_result=vision_output.data,
+                    schema=schema_model,
+                    html_confidence=extraction_output.confidence,
+                    vision_confidence=vision_output.confidence,
+                )
+
+                if merge_result.merged_data is not None:
+                    final_data = merge_result.merged_data
+                    extraction_method = "llm+vision"
+                    activity.logger.info(
+                        f"Vision merge complete: {merge_result.fields_agreed} agreed, "
+                        f"{merge_result.fields_from_vision} from vision, "
+                        f"{merge_result.fields_conflicted} conflicts"
+                    )
+
+        except Exception as vision_err:
+            activity.logger.warning(
+                f"Vision fallback failed for job {params.job_id}: {vision_err}"
+            )
+
+    # Step 6: Store results in MinIO
     result_data = {
         "job_id": params.job_id,
         "source_url": params.url,
-        "extracted_data": extraction_output.data.model_dump() if extraction_output.data else {},
+        "extracted_data": final_data.model_dump() if final_data else {},
         "model_used": extraction_output.model_used,
         "tokens_input": extraction_output.tokens_input,
         "tokens_output": extraction_output.tokens_output,
         "estimated_cost_usd": extraction_output.estimated_cost_usd,
         "confidence": extraction_output.confidence,
-        "extraction_method": extraction_output.extraction_method,
+        "extraction_method": extraction_method,
         "cascade_path": extraction_output.cascade_path,
         "metadata": preprocess_result.metadata,
     }
@@ -222,7 +310,7 @@ async def extract_with_llm(params: LLMExtractionInput) -> LLMExtractionResult:
 
     elapsed_ms = int((perf_counter() - start) * 1000)
 
-    field_count = len(extraction_output.data.model_fields) if extraction_output.data else 0
+    field_count = len(final_data.model_fields) if final_data else 0
 
     activity.logger.info(
         f"LLM extraction complete for job {params.job_id}: "
@@ -240,7 +328,112 @@ async def extract_with_llm(params: LLMExtractionInput) -> LLMExtractionResult:
         tokens_output=extraction_output.tokens_output,
         estimated_cost_usd=extraction_output.estimated_cost_usd,
         confidence=extraction_output.confidence,
-        extraction_method=extraction_output.extraction_method,
+        extraction_method=extraction_method,
+    )
+
+
+@activity.defn
+async def extract_with_vision(params: VisionExtractionInput) -> VisionExtractionResult:
+    """Vision-only extraction from a page screenshot.
+
+    Captures a screenshot (or uses a pre-captured one) and extracts
+    structured data using a vision model. Used when HTML extraction
+    is completely unavailable or the DOM is obfuscated.
+    """
+    start = perf_counter()
+
+    activity.logger.info(f"Starting vision extraction for job {params.job_id}")
+
+    from arachne_storage.minio_client import get_minio_client
+
+    minio = get_minio_client()
+
+    # Get or capture screenshot
+    if params.screenshot_ref:
+        screenshot_bytes = await minio.get_object_bytes(params.screenshot_ref)
+        screenshot_ref = params.screenshot_ref
+    else:
+        from arachne_extraction.vision_extractor import capture_screenshot
+
+        screenshot_bytes, screenshot_ref = await capture_screenshot(
+            url=params.url,
+            minio_client=minio,
+            job_id=params.job_id,
+        )
+
+    # Build schema model
+    if params.extraction_schema:
+        from pydantic import create_model, Field as PydanticField
+
+        fields = {}
+        for name, config in params.extraction_schema.get("fields", {}).items():
+            field_type = config.get("type", "str")
+            type_map = {"str": str, "int": int, "float": float, "bool": bool}
+            python_type = type_map.get(field_type, str)
+            fields[name] = (python_type | None, PydanticField(default=None))
+
+        schema_model = create_model("ExtractionTarget", **fields)
+    else:
+        from pydantic import create_model, Field as PydanticField
+
+        # Generic schema for auto-discovery
+        schema_model = create_model(
+            "GenericExtraction",
+            title=(str | None, PydanticField(default=None)),
+            description=(str | None, PydanticField(default=None)),
+            content=(str | None, PydanticField(default=None)),
+        )
+
+    # Extract with vision
+    from config import ExtractionEngineSettings
+
+    settings = ExtractionEngineSettings()
+
+    from arachne_extraction.vision_extractor import VisionExtractor, VisionExtractionConfig
+
+    vision_config = VisionExtractionConfig(
+        ollama_base_url=settings.ollama_base_url,
+        api_key=settings.gemini_api_key,
+        local_model=params.model_preference or "qwen3-vl",
+    )
+    extractor = VisionExtractor(config=vision_config)
+    output = await extractor.extract_from_screenshot(
+        screenshot=screenshot_bytes,
+        schema=schema_model,
+        url=params.url,
+    )
+
+    # Store results
+    result_data = {
+        "job_id": params.job_id,
+        "source_url": params.url,
+        "extracted_data": output.data.model_dump() if output.data else {},
+        "model_used": output.model_used,
+        "confidence": output.confidence,
+        "extraction_method": "vision",
+    }
+
+    result_json = json.dumps(result_data, indent=2, default=str)
+    result_ref = f"minio://arachne-results/extraction/{params.job_id}/vision_result.json"
+    await minio.put_object(result_ref, result_json.encode())
+
+    elapsed_ms = int((perf_counter() - start) * 1000)
+    field_count = len(output.data.model_fields) if output.data else 0
+
+    activity.logger.info(
+        f"Vision extraction complete for job {params.job_id}: "
+        f"{field_count} fields, {output.model_used}, "
+        f"{output.confidence:.2f} confidence"
+    )
+
+    return VisionExtractionResult(
+        result_ref=result_ref,
+        field_count=field_count,
+        elapsed_ms=elapsed_ms,
+        model_used=output.model_used,
+        confidence=output.confidence,
+        extraction_method="vision",
+        screenshot_ref=screenshot_ref,
     )
 
 
