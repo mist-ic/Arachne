@@ -83,7 +83,7 @@ The demo submits a URL through the **API Gateway**, which triggers a **Temporal 
 
 ---
 
-## 🏗️ Architecture
+## 🏗 Architecture
 
 > Full C4 diagrams with Mermaid visualizations available in [ARCHITECTURE.md](ARCHITECTURE.md)
 
